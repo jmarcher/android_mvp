@@ -1,44 +1,233 @@
+[![Nerd's Corner](https://circleci.com/gh/marcherdiego/android_mvp.svg?style=svg)](https://app.circleci.com/pipelines/github/marcherdiego/android_mvp)
+
 # Android MVP
 
-This is a small lib that will help you through your Android features development in order to keep things simple, clear and tidy.
+**Events** [ ![Download](https://img.shields.io/maven-central/v/com.github.marcherdiego.mvp/events) ](https://search.maven.org/artifact/com.github.marcherdiego.mvp/events)
 
-## Events
-[ ![Download](https://api.bintray.com/packages/nerdscorrner/MVPLib/Events/images/download.svg) ](https://bintray.com/nerdscorrner/MVPLib/Events/_latestVersion)
+**Coroutines** [ ![Download](https://img.shields.io/maven-central/v/com.github.marcherdiego.mvp/coroutines) ](https://search.maven.org/artifact/com.github.marcherdiego.mvp/coroutines)
+
+This is a small library (less than 70KB) that will help you through your Android features development in order to keep things simple, clear and tidy.
+
+Please refer to [this article](https://android.jlelse.eu/android-mvp-doing-it-right-dac9d5d72079) to get a more in-depth explanation about how this library and its components work.
+
+## Setup
+Add `implementation` or `api` (library projects) dependency
 
 ```groovy
-//Events oriented MVP Lib
-compile 'com.nerdscorner.mvp:events:LATEST_EVENTS_VERSION'
-```
-## Interfaces (Deprecated)
-[ ![Download](https://api.bintray.com/packages/nerdscorrner/MVPLib/Interfaces_deprecated/images/download.svg) ](https://bintray.com/nerdscorrner/MVPLib/Interfaces_deprecated/_latestVersion)
+implementation "com.github.marcherdiego.mvp:events:LATEST_VERSION" 
 
-```groovy
-//Interfaces oriented MVP Lib
-compile 'com.nerdscorner.mvp:interfaces:LATEST_INTERFACES_VERSION'
+// Optional if you want to use coroutines for model operations
+implementation "com.github.marcherdiego.mvp:coroutines:LATEST_VERSION" 
 ```
 
 ## Usage
-There are three different options to integrate this MVP library to your application, either having a reference to the presenter within your Activity/Fragment, using behaviours or extending a BaseActivity/BaseFragment that handles all the wiring and setup automagically.
-### Direct reference
-#### Attributes
-```java
-public class AttributeEventsMainActivity extends AppCompatActivity {
-    private AttributeMainPresenter presenter;
+There are three different options to integrate this MVP library to your application, either extending a BaseActivity/BaseFragment that handles all the wiring and setup automagically **(recommended)**, having a reference to the presenter within your Activity/Fragment, or using behaviours.
+For the three of them, the model, view and presenter behave the same so the only difference is in the activity/fragment
 
-    @Override
-        protected void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            ...
-            presenter = new AttributeMainPresenter(
-                    new AttributeMainView(this, bus),
-                    new AttributeMainModel(bus)
-            );
-        }
+### Extending BaseActivity (recommended)
+#### Activity
+```kotlin
+// Extending BaseActivity will automatically register and unregister the presenter to the bus whenever your activity get resumed or paused
+class FeatureActivity : BaseActivity<FeaturePresenter>() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.feature_activity)
+
+        presenter = FeaturePresenter(
+                FeatureView(this),
+                FeatureModel()
+        )
+    }
 }
 ```
 
-//TODO
+#### Fragment
+```kotlin
+// Extending BaseFragment will automatically register and unregister the presenter to the bus whenever your activity get resumed or paused
+class FeatureFragment : BaseFragment<FeaturePresenter>() {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+        return inflater.inflate(R.layout.fragment_example, container, false)
+    }
 
+    override fun onActivityCreated(savedInstanceState: Bundle?) {
+        super.onActivityCreated(savedInstanceState)
+
+        presenter = FeaturePresenter(
+                FeatureView(this),
+                FeatureModel()
+        )
+    }
+}
+```
+
+### Holding a presenter reference (without inheritance)
+#### Activity
+```kotlin
+class FeatureActivity : AppCompatActivity() {
+    private lateinit var presenter: FeaturePresenter
+    private var bus = Bus.newInstance
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.feature_activity)
+
+        presenter = FeaturePresenter(
+                FeatureView(this),
+                FeatureModel(),
+                bus
+        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        bus.register(presenter)
+    }
+
+    override fun onPause() {
+        bus.unregister(presenter)
+        super.onPause()
+    }
+}
+```
+
+#### Fragment
+```kotlin
+class FeatureFragment : Fragment() {
+    private lateinit var presenter: FeaturePresenter
+    private var bus = Bus.newInstance
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+        return inflater.inflate(R.layout.fragment_example, container, false)
+    }
+
+    override fun onActivityCreated(savedInstanceState: Bundle?) {
+        super.onActivityCreated(savedInstanceState)
+
+        presenter = FeaturePresenter(
+                FeatureView(this, bus),
+                FeatureModel(bus)
+        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        bus.register(presenter)
+    }
+
+    override fun onPause() {
+        bus.unregister(presenter)
+        super.onPause()
+    }
+}
+```
+
+### MVP components
+#### Presenter
+```kotlin
+class FeaturePresenter(view: FeatureView, model: FeatureModel) : BaseActivityPresenter<FeatureView, FeatureModel>(view, model) {
+    //...
+}
+```
+#### View
+```kotlin
+class FeatureView(activity: FeatureActivity) : BaseActivityView(activity) {
+    //...
+}
+```
+#### Model
+```kotlin
+class FeatureModel : BaseEventsModel() {
+    //...
+}
+```
+
+### Basic wiring
+#### Presenter
+```kotlin
+class FeaturePresenter(view: FeatureView, model: FeatureModel) : BaseActivityPresenter<FeatureView, FeatureModel>(view, model) {
+    // Event posted by the view
+    @Subscribe
+    fun onActionClicked(event: FeatureView.ActionClickedEvent) {
+        view.setTextValue("Executing background task...")
+        model.doSomethingInBackground()
+    }
+
+    // Event posted by the model
+    @Subscribe
+    fun onBackgroundTaskCompleted(event: FeatureModel.BackgroundTaskCompletedEvent) {
+        view.setTextValue("Background task completed")
+    }
+}
+```
+#### View
+```kotlin
+class FeatureView(activity: AppCompatActivity) : BaseActivityView(activity) {
+    private var textView: TextView = activity.findViewById(R.id.text)
+
+    init {
+        // Helper library method to handle click event
+        onClick(R.id.some_button, ActionClickedEvent())
+        
+        // Optionally you can do
+        activity.findViewById<View>(R.id.some_button)?.setOnClickListener {
+            bus.post(ActionClickedEvent())
+        }
+    }
+
+    fun setTextValue(value: CharSequence) {
+        textView.text = value
+    }
+
+    class ActionClickedEvent
+}
+```
+#### Model
+```kotlin
+import com.nerdscorner.mvplib.events.model.BaseEventsModel
+
+class FeatureModel : BaseEventsModel() {
+    fun doSomethingInBackground() {
+        backendCall().execute {
+            success = {
+                bus.post(BackgroundTaskCompletedEvent())
+            }
+        }
+    }
+
+    class BackgroundTaskCompletedEvent
+}
+```
+
+## Coroutines example
+```kotlin
+import com.nerdscorner.events.coroutines.extensions.withResult
+
+class FeatureModel : BaseEventsModel() {
+    private var fetchJob: Job? = null
+
+    fun doSomethingInBackground() {
+        fetchJob = withResult(
+            resultFunc = someSuspendFunctionHere(),
+            success = { // this: SuspendFunctionReturnType
+                bus.post(BackgroundTaskCompletedEvent(this))
+            },
+            fail = { // this: Exception
+                bus.post(BackgroundTaskFailedEvent(this.message))
+            },
+            cancelled = { // Called when executing fetchJob?.cancel()
+                Log.e("InheritanceMainModel", "Job cancelled :(")
+            }
+        )
+    }
+
+    fun cancelJob() {
+        fetchJob?.cancel()
+    }
+
+    class BackgroundTaskCompletedEvent(val pageHtml: String?)
+    class BackgroundTaskFailedEvent(val message: String?)
+}
+```
 
 ## Contributing
 
